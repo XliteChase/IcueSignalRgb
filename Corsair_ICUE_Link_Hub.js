@@ -171,16 +171,17 @@ function burstFansCheck() {
 }
 
 export function Render() {
-	if(BragiController) {
-		if(!fansSpooled) {
-			burstFansCheck();
+       if(BragiController) {
+               if(!fansSpooled) {
+                       burstFansCheck();
 
-			return;
-		}
+                       return;
+               }
 
-		UpdateRGB();
-		StateMgr.process();
-	}
+               PollDeviceState(0x01);
+               UpdateRGB();
+               StateMgr.process();
+       }
 }
 
 export function Shutdown(SystemSuspending) {
@@ -490,22 +491,51 @@ function createSubdevice(subdevice) {
 	device.setSubdeviceLeds(subdevice.childDeviceIDString, subdevice.ledNames, subdevice.ledPositions);
 }
 
-function PollDeviceState(deviceID = 0){
-	// Corsair Pings every 52 Seconds. This will keep the device in software mode.
-	const PollInterval = 50000;
+function forceSoftwareMode(deviceID = 0, tries = 3){
+        for(let attempt = 0; attempt < tries; attempt++){
+                const mode = Corsair.FetchProperty(Corsair.properties.mode, deviceID);
+                if(mode === Corsair.modes.Software){
+                        return true;
+                }
 
-	if(Date.now() - PollDeviceState.lastPollTime < PollInterval) {
-		return;
-	}
+                Corsair.SetMode("Software", deviceID);
+                device.pause(100);
 
-	if(Corsair.PingDevice(deviceID)){
-		device.log(`Device Ping Successful!`);
-	}else{
-		device.log(`Device Ping Failed!`);
-	}
+                const verify = Corsair.FetchProperty(Corsair.properties.mode, deviceID);
+                if(verify === Corsair.modes.Software){
+                        return true;
+                }
+        }
 
-	PollDeviceState.lastPollTime = Date.now();
+        return false;
 }
+
+function PollDeviceState(deviceID = 0){
+        // Corsair Pings every 52 Seconds. This will keep the device in software mode.
+        const PollInterval = 50000;
+
+        if(Date.now() - PollDeviceState.lastPollTime < PollInterval) {
+                return;
+        }
+
+        if(Corsair.PingDevice(deviceID)){
+                device.log(`Device Ping Successful!`);
+        }else{
+                device.log(`Device Ping Failed!`);
+        }
+
+       const currentMode = Corsair.FetchProperty(Corsair.properties.mode, deviceID);
+       if(currentMode !== Corsair.modes.Software){
+               device.log(`Device mode was ${Corsair.modes[currentMode]}, forcing Software mode.`);
+               if(!forceSoftwareMode(deviceID, 5)){
+                       device.log("Failed to set Software mode after retries");
+               }
+       }
+
+       PollDeviceState.lastPollTime = Date.now();
+}
+
+PollDeviceState.lastPollTime = 0;
 
 function UpdateRGB(overrideColor){
 	const RGBData = getColors(overrideColor);

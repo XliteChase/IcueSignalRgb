@@ -491,6 +491,25 @@ function createSubdevice(subdevice) {
 	device.setSubdeviceLeds(subdevice.childDeviceIDString, subdevice.ledNames, subdevice.ledPositions);
 }
 
+function forceSoftwareMode(deviceID = 0, tries = 3){
+        for(let attempt = 0; attempt < tries; attempt++){
+                const mode = Corsair.FetchProperty(Corsair.properties.mode, deviceID);
+                if(mode === Corsair.modes.Software){
+                        return true;
+                }
+
+                Corsair.SetMode("Software", deviceID);
+                device.pause(100);
+
+                const verify = Corsair.FetchProperty(Corsair.properties.mode, deviceID);
+                if(verify === Corsair.modes.Software){
+                        return true;
+                }
+        }
+
+        return false;
+}
+
 function PollDeviceState(deviceID = 0){
         // Corsair Pings every 52 Seconds. This will keep the device in software mode.
         const PollInterval = 50000;
@@ -508,7 +527,9 @@ function PollDeviceState(deviceID = 0){
        const currentMode = Corsair.FetchProperty(Corsair.properties.mode, deviceID);
        if(currentMode !== Corsair.modes.Software){
                device.log(`Device mode was ${Corsair.modes[currentMode]}, forcing Software mode.`);
-               Corsair.SetMode("Software", deviceID);
+               if(!forceSoftwareMode(deviceID, 5)){
+                       device.log("Failed to set Software mode after retries");
+               }
        }
 
        PollDeviceState.lastPollTime = Date.now();
